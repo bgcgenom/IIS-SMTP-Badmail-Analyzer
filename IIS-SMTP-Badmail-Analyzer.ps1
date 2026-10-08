@@ -74,7 +74,7 @@ function Resolve-MessageOrigin {
  }
  [pscustomobject]@{OriginHost=$host;OriginIP=$ip;OriginType=$type;OriginConfidence=$confidence;OriginEvidence=$evidence}
 }
-function Get-Remediation {param($r);$where=if($r.OriginHost -or $r.OriginIP){' On origin '+(@($r.OriginHost,$r.OriginIP)|Where-Object {$_}|Select-Object -Unique -First 2 -join ' / ')+':'}else{''};switch($r.Category){
+function Get-Remediation {param($r);$where=if($r.OriginHost -or $r.OriginIP){$originLabel=(@($r.OriginHost,$r.OriginIP)|Where-Object {$_}|Select-Object -Unique -First 2) -join ' / ';' On origin '+$originLabel+':'}else{''};switch($r.Category){
  'Malformed Recipient' {$where+' verify and correct the recipient on the originating application or device, then test delivery.'}
  'Recipient Rejected' {if($r.EXOStatus -eq 'Not Found' -and $r.ADStatus -eq 'Not Found'){$where+' recipient is absent from AD and Exchange Online. Replace or remove it at the source, then retest.'}else{$where+' validate the recipient in the authoritative mail directory. If obsolete, replace or remove it at the source.'}}
  'Message Too Large' {$where+' do not change the recipient based on this error. Reduce message or attachment size, or review message-size limits.'}
@@ -87,16 +87,24 @@ function Read-BadMessage {
  param([string]$Path,[int64]$MaxScanBytes=8388608)
  $r=[ordered]@{OriginalFrom=$null;OriginalTo=$null;Subject=$null;FailedRecipient=$null;Status=$null;Diagnostic=$null;TopFrom=$null;TopTo=$null;TopSubject=$null;ReceivedHeaders=@()}
  $fs=[IO.File]::Open($Path,'Open','Read','ReadWrite');$sr=New-Object IO.StreamReader($fs,$true)
- try{$bytes=0;$dsn=$false;$lastReceived=-1;while(-not $sr.EndOfStream -and $bytes -lt $MaxScanBytes){$line=$sr.ReadLine();$bytes+=$line.Length+2
-  if($line -match '^Received:\s*(.*)\s*(?:rfc822;)?\s*(.+)$'){$r.FailedRecipient=$matches[1].Trim();$dsn=$true}
-  elseif($dsn -and $line -match '^Status:\s*(.+)$'){$r.Status=$matches[1].Trim()}
-  elseif($dsn -and $line -match '^Diagnostic-Code:\s*(.+)$'){$r.Diagnostic=$matches[1].Trim()}
-  elseif($r.Diagnostic -and $dsn -and $line -match '^\s+(.+)$'){$r.Diagnostic+=' '+$matches[1].Trim()}
-  if($line -match '^From:\s*(.*)$'){if(-not $r.TopFrom){$r.TopFrom=$matches[1].Trim()}elseif(-not $r.OriginalFrom){$r.OriginalFrom=$matches[1].Trim()}}
-  elseif($line -match '^To:\s*(.*)$'){if(-not $r.TopTo){$r.TopTo=$matches[1].Trim()}elseif(-not $r.OriginalTo){$r.OriginalTo=$matches[1].Trim()}}
-  elseif($line -match '^Subject:\s*(.*)$'){if(-not $r.TopSubject){$r.TopSubject=$matches[1].Trim()}elseif(-not $r.Subject){$r.Subject=$matches[1].Trim()}}
-  if($r.FailedRecipient -and $r.Diagnostic -and $r.OriginalFrom -and $r.Subject){break}
- }}finally{$sr.Dispose()}
+ try{
+  $bytes=0;$dsn=$false;$inReceived=$false
+  while(-not $sr.EndOfStream -and $bytes -lt $MaxScanBytes){
+   $line=$sr.ReadLine();$bytes+=$line.Length+2
+   if($line -match '^Received:\s*(.*)$'){
+    $r.ReceivedHeaders+=($matches[1].Trim());$inReceived=$true
+   } elseif($inReceived -and $line -match '^\s+(.+)$'){
+    $i=$r.ReceivedHeaders.Count-1;$r.ReceivedHeaders[$i]+=' '+$matches[1].Trim()
+   } else {$inReceived=$false}
+   if($line -match '^Final-Recipient:\s*(?:rfc822;)?\s*(.+)$'){$r.FailedRecipient=$matches[1].Trim();$dsn=$true}
+   elseif($dsn -and $line -match '^Status:\s*(.+)$'){$r.Status=$matches[1].Trim()}
+   elseif($dsn -and $line -match '^Diagnostic-Code:\s*(.+)$'){$r.Diagnostic=$matches[1].Trim()}
+   elseif($r.Diagnostic -and $dsn -and $line -match '^\s+(.+)$'){$r.Diagnostic+=' '+$matches[1].Trim()}
+   if($line -match '^From:\s*(.*)$'){if(-not $r.TopFrom){$r.TopFrom=$matches[1].Trim()}elseif(-not $r.OriginalFrom){$r.OriginalFrom=$matches[1].Trim()}}
+   elseif($line -match '^To:\s*(.*)$'){if(-not $r.TopTo){$r.TopTo=$matches[1].Trim()}elseif(-not $r.OriginalTo){$r.OriginalTo=$matches[1].Trim()}}
+   elseif($line -match '^Subject:\s*(.*)$'){if(-not $r.TopSubject){$r.TopSubject=$matches[1].Trim()}elseif(-not $r.Subject){$r.Subject=$matches[1].Trim()}}
+  }
+ }finally{$sr.Dispose()}
  if(-not $r.OriginalFrom){$r.OriginalFrom=$r.TopFrom};if(-not $r.OriginalTo){$r.OriginalTo=$r.TopTo};if(-not $r.Subject){$r.Subject=$r.TopSubject}
  [pscustomobject]$r
 }
