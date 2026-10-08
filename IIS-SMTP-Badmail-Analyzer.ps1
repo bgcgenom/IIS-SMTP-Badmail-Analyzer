@@ -57,8 +57,8 @@ function Resolve-MessageOrigin {
  $host=$null;$ip=$null;$confidence='Low'
  if($evidence){
   if($evidence -match '(?i)\bfrom\s+([^\s\(\[;]+)'){$host=$matches[1].Trim()}
-  $ips=[regex]::Matches($evidence,'(?<![0-9])(?:\d{1,3}\.){3}\d{1,3}(?![0-9])')|ForEach-Object {$_.Value}
-  if($ips.Count){$ip=$ips[0]}
+  $ips=@([regex]::Matches($evidence,'(?<![0-9])(?:\d{1,3}\.){3}\d{1,3}(?![0-9])') | ForEach-Object {$_.Value})
+  if($ips.Count -gt 0){$ip=[string]$ips[0]}
   if($host -or $ip){$confidence='High'}
  }
  $clue=("$host $From $Subject")
@@ -114,7 +114,7 @@ function Invoke-BadmailAnalysis {
  if(-not(Test-Path $BadmailPath)){throw 'Badmail path not found.'}
  foreach($bad in Get-ChildItem $BadmailPath -Filter '*.BAD' -File){
   $base=[IO.Path]::GetFileNameWithoutExtension($bad.Name);$bdp=Join-Path $BadmailPath ($base+'.BDP');$bdr=Join-Path $BadmailPath ($base+'.BDR')
-  $h=Read-BadMessage $bad.FullName;$p=Read-BdpPrintable $bdp;$cat=Get-Classification $h.Status $h.Diagnostic $h.FailedRecipient;$origin=Resolve-MessageOrigin $h.ReceivedHeaders $h.OriginalFrom $h.Subject
+  $h=Read-BadMessage $bad.FullName;$p=Read-BdpPrintable $bdp;$cat=Get-Classification $h.Status $h.Diagnostic $h.FailedRecipient;try{$origin=Resolve-MessageOrigin $h.ReceivedHeaders $h.OriginalFrom $h.Subject}catch{Write-AppLog ('Origin resolution failed for '+$bad.Name+': '+$_.Exception.Message) 'WARNING';$origin=[pscustomobject]@{OriginHost=$null;OriginIP=$null;OriginType='Unknown';OriginConfidence='Low';OriginEvidence='Origin detection error: '+$_.Exception.Message}}
   $secondary=$null;if($p -match '([245]\d\d\s+[245]\.[0-9.]+[^\r\n]*)'){$secondary=$matches[1].Trim()};$secondaryCategory=Get-SecondaryClassification $secondary
   $o=[pscustomobject]@{Date=$bad.LastWriteTime;OriginHost=$origin.OriginHost;OriginIP=$origin.OriginIP;OriginType=$origin.OriginType;OriginConfidence=$origin.OriginConfidence;OriginEvidence=$origin.OriginEvidence;Source=$h.OriginalFrom;FailedRecipient=$h.FailedRecipient;OriginalTo=$h.OriginalTo;Subject=$h.Subject;Status=$h.Status;Category=$cat;Severity=$(if($cat -in 'Temporary SMTP Failure','Other'){'WARNING'}else{'FAIL'});ADStatus='Not Checked';EXOStatus='Not Checked';MessageSizeMB=[math]::Round($bad.Length/1MB,2);Diagnostic=$h.Diagnostic;SecondaryCategory=$secondaryCategory;SecondaryDiagnostic=$secondary;BaseName=$base;BAD=$bad.FullName;BDR=$(if(Test-Path $bdr){$bdr}else{$null});BDP=$(if(Test-Path $bdp){$bdp}else{$null});Remediation=''}
   $o.Remediation=Get-Remediation $o;$o
