@@ -1,0 +1,14 @@
+function Invoke-ADRecipientValidation {param([object[]]$Rows,[pscredential]$Credential)
+ if(-not(Get-Module ActiveDirectory -ListAvailable)){throw 'ActiveDirectory module is not installed.'};Import-Module ActiveDirectory
+ $map=@{};foreach($a in $Rows.FailedRecipient|Where-Object {$_}|Sort-Object -Unique){$x=$a.Replace('\','\5c').Replace('*','\2a').Replace('(','\28').Replace(')','\29');$p=@{LDAPFilter="(|(mail=$x)(proxyAddresses=smtp:$x))";Properties='mail','proxyAddresses';ErrorAction='SilentlyContinue'};if($Credential){$p.Credential=$Credential};$o=Get-ADObject @p|Select-Object -First 1;$map[$a]=if($o){'Found'}else{'Not Found'}}
+ foreach($r in $Rows){if($r.FailedRecipient -and $map.ContainsKey($r.FailedRecipient)){$r.ADStatus=$map[$r.FailedRecipient]};$r.Remediation=Get-Remediation $r}
+}
+function Invoke-EXORecipientValidation {param([object[]]$Rows)
+ $pwsh=Get-Command pwsh.exe -ErrorAction SilentlyContinue;if(-not $pwsh){throw 'PowerShell 7 is not installed.'}
+ $addresses=@($Rows.FailedRecipient|Where-Object {$_}|Sort-Object -Unique);if(-not $addresses.Count){return}
+ $root=Join-Path $env:TEMP ('IISSMTP_'+[guid]::NewGuid().ToString('N'));New-Item -ItemType Directory $root|Out-Null;$input=Join-Path $root 'in.json';$output=Join-Path $root 'out.json';$helper=Join-Path $root 'exo.ps1';$addresses|ConvertTo-Json|Set-Content $input -Encoding UTF8
+ $code=@('param($InputFile,$OutputFile)','$ErrorActionPreference=''Stop''',''Import-Module ExchangeOnlineManagement'',''Connect-ExchangeOnline -Device -ShowBanner:$false'',''try {'','' $a=@(Get-Content -Raw $InputFile|ConvertFrom-Json)'','' $r=foreach($x in $a){$o=Get-EXORecipient -Identity $x -ErrorAction SilentlyContinue;[pscustomobject]@{Address=$x;Status=if($o){''''Found''''}else{''''Not Found''''}}}'','' $r|ConvertTo-Json|Set-Content $OutputFile -Encoding UTF8'',''} finally {Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue}'')
+ $code|Set-Content $helper -Encoding UTF8
+ try{$args='-NoProfile -File "'+$helper+'" -InputFile "'+$input+'" -OutputFile "'+$output+'"';$p=Start-Process $pwsh.Source -ArgumentList $args -Wait -PassThru;if($p.ExitCode -ne 0 -or -not(Test-Path $output)){throw 'Exchange Online validation did not complete. No recipients were marked Not Found.'};$map=@{};foreach($x in @(Get-Content -Raw $output|ConvertFrom-Json)){$map[$x.Address]=$x.Status};foreach($r in $Rows){if($r.FailedRecipient -and $map.ContainsKey($r.FailedRecipient)){$r.EXOStatus=$map[$r.FailedRecipient]};$r.Remediation=Get-Remediation $r}}finally{Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue}
+}
+Export-ModuleMember -Function Invoke-ADRecipientValidation,Invoke-EXORecipientValidation
