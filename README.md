@@ -1,6 +1,6 @@
 # IIS SMTP Badmail Analyzer
 
-A Windows PowerShell/WPF utility for analyzing Microsoft IIS SMTP Badmail, correlating `.BAD`, `.BDR`, and `.BDP` files, validating recipients, and producing remediation-focused HTML and CSV reports.
+A single-file Windows PowerShell/WPF utility for analyzing Microsoft IIS SMTP Badmail, correlating `.BAD`, `.BDR`, and `.BDP` files, validating recipients, and producing remediation-focused HTML and CSV reports.
 
 ## Goals
 
@@ -24,6 +24,10 @@ A Windows PowerShell/WPF utility for analyzing Microsoft IIS SMTP Badmail, corre
 - Optional: PowerShell 7 and ExchangeOnlineManagement for Exchange Online validation.
 
 The application checks these prerequisites at startup and offers installation guidance/actions for optional components.
+
+## Deployment
+
+`IIS-SMTP-Badmail-Analyzer.ps1` is self-contained. The `Modules` directory in the repository is retained only as development/reference source and is **not required to run the application**. Copy or download the single `.ps1` file to the administrative workstation.
 
 ## Start
 
