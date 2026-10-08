@@ -2,84 +2,42 @@
 
 A single-file Windows PowerShell/WPF utility for analyzing Microsoft IIS SMTP Badmail, correlating `.BAD`, `.BDR`, and `.BDP` files, validating recipients, and producing remediation-focused HTML and CSV reports.
 
-## Goals
+## Design
 
-- Generic across IIS SMTP environments. No organization, domain, server, path, or recipient is hardcoded.
-- Read-only analysis by default.
-- Stream large `.BAD` files instead of loading complete messages into memory.
-- Keep original-delivery failures separate from secondary NDR-delivery failures.
-- Validate recipients against Active Directory and Exchange Online when requested.
-- Treat unavailable validation as **Not Checked**, never as **Not Found**.
-- Offer prerequisite installation instead of silently changing the workstation.
-- Keep credentials in memory only.
-- Generate self-contained HTML reports with evidence and recommended remediation.
-- Archive Badmail only after explicit operator confirmation. v1.0 does not delete Badmail.
+- One self-contained `IIS-SMTP-Badmail-Analyzer.ps1`; no runtime modules.
+- Generic across IIS SMTP environments; no organization, domain, server, path, IP address, or recipient is hardcoded.
+- Read-only Badmail analysis by default.
+- Streams large `.BAD` files rather than loading complete messages into memory.
+- Keeps original-delivery failures separate from secondary NDR-delivery failures.
+- Optional Active Directory and Exchange Online recipient validation.
+- A failed/unavailable directory query must not be treated as recipient absence.
+- Optional prerequisites are never installed silently.
+- Credentials are not persisted by the application.
 
 ## Requirements
 
-- Windows PowerShell 5.1 for the WPF GUI.
-- Windows with .NET/WPF.
-- Administrative access to the target SMTP server's mailroot when remote discovery uses administrative shares.
+- Windows PowerShell 5.1 and WPF.
+- Read access to the IIS SMTP Badmail directory.
 - Optional: RSAT Active Directory PowerShell module.
 - Optional: PowerShell 7 and ExchangeOnlineManagement for Exchange Online validation.
 
-The application checks these prerequisites at startup and offers installation guidance/actions for optional components.
-
 ## Deployment
 
-`IIS-SMTP-Badmail-Analyzer.ps1` is self-contained. The `Modules` directory in the repository is retained only as development/reference source and is **not required to run the application**. Copy or download the single `.ps1` file to the administrative workstation.
+Copy the single `IIS-SMTP-Badmail-Analyzer.ps1` file to the administrative workstation. No companion module directory is required.
 
-## Start
+## Authentication and data handling
 
-Run Windows PowerShell as an account that can read the SMTP server, then:
+Alternate Windows credentials, when requested, are held only by the running PowerShell process and are not exported by the application.
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\IIS-SMTP-Badmail-Analyzer.ps1
-```
+Exchange Online validation uses interactive device authentication through ExchangeOnlineManagement. The analyzer does not export or deliberately persist Exchange Online authentication tokens. Authentication/token lifecycle outside the analyzer is controlled by Microsoft's ExchangeOnlineManagement authentication stack.
 
-The application asks for the SMTP server. It attempts to discover the IIS SMTP mailroot through common local/remote locations and allows a manual Badmail path when discovery is not possible.
+Temporary Exchange Online helper files are created beneath the user's temporary directory and removed when validation completes or fails.
 
-## Workflow
+The analyzer does not include telemetry or upload analysis data to an external service.
 
-1. Review prerequisites.
-2. Enter the SMTP server.
-3. Select current Windows credentials or alternate credentials.
-4. Discover or manually select the Badmail directory.
-5. Analyze Badmail.
-6. Optionally validate unique recipients against Active Directory.
-7. Optionally validate recipients against Exchange Online.
-8. Review classifications and remediation.
-9. Export HTML/CSV.
-10. Optionally archive the current Badmail files.
+## Local output
 
-## Safety
-
-Analysis, discovery, AD validation, and Exchange Online validation are read-only.
-
-Archive copies the current Badmail files into a ZIP archive after explicit confirmation. The source files are not deleted.
-
-## Failure classifications
-
-The analyzer recognizes common classes including:
-
-- Recipient rejected / invalid recipient
-- Message too large
-- Exchange Online tenant attribution / TLS / relay failure
-- Mailbox unavailable
-- Temporary SMTP failure
-- Malformed recipient address
-- Other SMTP failure
-
-Classification is evidence based. Directory validation augments SMTP evidence but does not replace it.
-
-## Exchange Online
-
-The GUI is Windows PowerShell 5.1/WPF. Exchange Online validation launches a temporary PowerShell 7 helper because current ExchangeOnlineManagement authentication is more reliable there. Authentication is interactive/device based. No Exchange Online password is stored.
-
-## Output
-
-By default, output is written below:
+Operational data is intentionally written beneath:
 
 ```text
 %LOCALAPPDATA%\IIS-SMTP-Badmail-Analyzer\
@@ -88,8 +46,42 @@ By default, output is written below:
     Archives\
 ```
 
-Environment profiles may be saved later, but credentials must never be persisted.
+Logs contain application activity and error information. HTML/CSV reports can contain mail metadata such as recipients, message subjects, originating hosts/IP addresses, SMTP diagnostics, and validation results.
+
+Archive is optional and requires confirmation. An archive contains copies of the selected `.BAD`, `.BDR`, and `.BDP` files and may therefore contain original message content or attachments. Source Badmail files are not deleted.
+
+Treat reports and archives according to the organization's information-handling requirements.
+
+## Start
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\IIS-SMTP-Badmail-Analyzer.ps1
+```
+
+## Workflow
+
+1. Review prerequisites.
+2. Enter the SMTP server.
+3. Discover or manually select the Badmail directory.
+4. Analyze Badmail.
+5. Optionally validate recipients against Active Directory.
+6. Optionally validate recipients against Exchange Online.
+7. Review origin, classifications, evidence, and remediation.
+8. Optionally export HTML/CSV.
+9. Optionally archive the current Badmail files.
+
+## Validation semantics
+
+Recipient states are:
+
+- `Not Checked`
+- `Found`
+- `Not Found`
+- `Error/Unavailable`
+
+`Not Found` is reserved for a successful directory query that returned no matching recipient. Authentication, connectivity, module, or service failures must not be converted into `Not Found`.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See `LICENSE`.
