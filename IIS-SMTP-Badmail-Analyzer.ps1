@@ -54,25 +54,25 @@ function Resolve-MessageOrigin {
  param($Headers,$From,$Subject)
  $received=@($Headers|Where-Object {$_})
  $evidence=if($received.Count){[string]$received[-1]}else{$null}
- $host=$null;$ip=$null;$confidence='Low'
+ $originHost=$null;$originIP=$null;$confidence='Low'
  if($evidence){
-  if($evidence -match '(?i)\bfrom\s+([^\s\(\[;]+)'){$host=$matches[1].Trim()}
+  if($evidence -match '(?i)\bfrom\s+([^\s\(\[;]+)'){$originHost=$matches[1].Trim()}
   $ips=@([regex]::Matches($evidence,'(?<![0-9])(?:\d{1,3}\.){3}\d{1,3}(?![0-9])') | ForEach-Object {$_.Value})
-  if($ips.Count -gt 0){$ip=[string]$ips[0]}
-  if($host -or $ip){$confidence='High'}
+  if($ips.Count -gt 0){$originIP=[string]$ips[0]}
+  if($originHost -or $originIP){$confidence='High'}
  }
- $clue=("$host $From $Subject")
+ $clue=("$originHost $From $Subject")
  $type='Unknown'
  if($clue -match '(?i)\b(prs[-_ ]?\d+|printer|scanner|scan(?:ned)? image|xerox|sharp|ricoh|canon|laserjet|multifunction|\bmfp\b)'){$type='Printer / MFP'}
  elseif($clue -match '(?i)(solarwinds|network performance monitor|whatsup|wug|monitoring)'){$type='Monitoring / Application'}
  elseif($clue -match '(?i)(ups|eaton|power xpert|storeonce|ilo|infrastructure)'){$type='Infrastructure Device'}
- elseif($host){$type='Server / Application'}
+ elseif($originHost){$type='Server / Application'}
  if(-not $evidence){
-  if($From -match '(?i)<([^>]+)>'){$host=($matches[1] -split '@')[0]}
-  elseif($From -match '(?i)^([^@\s]+)@'){$host=$matches[1]}
-  if($host){$confidence='Low';$evidence='Inferred from message From header only'}
+  if($From -match '(?i)<([^>]+)>'){$originHost=($matches[1] -split '@')[0]}
+  elseif($From -match '(?i)^([^@\s]+)@'){$originHost=$matches[1]}
+  if($originHost){$confidence='Low';$evidence='Inferred from message From header only'}
  }
- [pscustomobject]@{OriginHost=$host;OriginIP=$ip;OriginType=$type;OriginConfidence=$confidence;OriginEvidence=$evidence}
+ [pscustomobject]@{OriginHost=$originHost;OriginIP=$originIP;OriginType=$type;OriginConfidence=$confidence;OriginEvidence=$evidence}
 }
 function Get-Remediation {param($r);$where=if($r.OriginHost -or $r.OriginIP){$originLabel=(@($r.OriginHost,$r.OriginIP)|Where-Object {$_}|Select-Object -Unique -First 2) -join ' / ';' On origin '+$originLabel+':'}else{''};switch($r.Category){
  'Malformed Recipient' {$where+' verify and correct the recipient on the originating application or device, then test delivery.'}
