@@ -1,3 +1,6 @@
+$script:ReportRoot=Join-Path (Join-Path $env:LOCALAPPDATA 'IIS-SMTP-Badmail-Analyzer') 'Reports'
+$script:ArchiveRoot=Join-Path (Join-Path $env:LOCALAPPDATA 'IIS-SMTP-Badmail-Analyzer') 'Archives'
+@($script:ReportRoot,$script:ArchiveRoot)|ForEach-Object{if(-not(Test-Path $_)){New-Item -ItemType Directory -Path $_ -Force|Out-Null}}
 function Export-AnalyzerReport {param([object[]]$Rows,[string]$Server,[string]$BadmailPath)
  $stamp=Get-Date -Format 'yyyyMMdd_HHmmss';$safe=$Server -replace '[^A-Za-z0-9._-]','_';$html=Join-Path $script:ReportRoot ('SMTP-Badmail-Report_'+$safe+'_'+$stamp+'.html');$csv=[IO.Path]::ChangeExtension($html,'.csv')
  $e=[Net.WebUtility];$sb=New-Object Text.StringBuilder
